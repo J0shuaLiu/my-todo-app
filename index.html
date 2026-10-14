@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Todo</title>
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --card: #ffffff;
+    --text: #1f1f1f;
+    --muted: #6b6b6b;
+    --line: #e2e2df;
+    --accent: #2f6fed;
+    --danger: #c9463d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414;
+      --card: #1e1e1e;
+      --text: #ececec;
+      --muted: #9a9a9a;
+      --line: #333;
+      --accent: #6b9bff;
+      --danger: #e06b62;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  form { display: flex; gap: 8px; margin-bottom: 16px; }
+  input[type="text"], input[type="password"] {
+    flex: 1;
+    padding: 10px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  button {
+    padding: 10px 14px;
+    font: inherit;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  li label { flex: 1; cursor: pointer; overflow-wrap: anywhere; }
+  li.done label { text-decoration: line-through; color: var(--muted); }
+  li .delete {
+    background: none;
+    color: var(--danger);
+    padding: 4px 8px;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .empty { color: var(--muted); text-align: center; padding: 16px; }
+  .ai { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .ai .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #summary { margin-top: 12px; min-height: 1.5em; }
+  #summary.error { color: var(--danger); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Todo</h1>
+
+  <form id="add-form">
+    <input id="new-task" type="text" placeholder="Add a task" autocomplete="off" required>
+    <button type="submit">Add</button>
+  </form>
+
+  <ul id="list"></ul>
+
+  <section class="ai">
+    <button id="summarize" type="button">Summarize my day</button>
+    <p id="summary"></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  const TASKS_KEY = "todo.tasks";
+
+  const form = document.getElementById("add-form");
+  const input = document.getElementById("new-task");
+  const list = document.getElementById("list");
+  const summarizeBtn = document.getElementById("summarize");
+  const summaryEl = document.getElementById("summary");
+
+  // ---------- Storage ----------
+  function loadTasks() {
+    try {
+      const raw = localStorage.getItem(TASKS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveTasks() {
+    try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch (e) {}
+  }
+
+  let tasks = loadTasks();
+
+  // ---------- Rendering ----------
+  function render() {
+    list.innerHTML = "";
+    if (tasks.length === 0) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "Nothing to do yet.";
+      list.appendChild(li);
+      return;
+    }
+    tasks.forEach(function (task) {
+      const li = document.createElement("li");
+      if (task.done) li.classList.add("done");
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = task.done;
+      checkbox.id = "task-" + task.id;
+      checkbox.addEventListener("change", function () {
+        task.done = checkbox.checked;
+        saveTasks();
+        render();
+      });
+
+      const label = document.createElement("label");
+      label.htmlFor = checkbox.id;
+      label.textContent = task.text;
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "delete";
+      del.title = "Delete";
+      del.setAttribute("aria-label", "Delete " + task.text);
+      del.textContent = "×";
+      del.addEventListener("click", function () {
+        tasks = tasks.filter(function (t) { return t.id !== task.id; });
+        saveTasks();
+        render();
+      });
+
+      li.appendChild(checkbox);
+      li.appendChild(label);
+      li.appendChild(del);
+      list.appendChild(li);
+    });
+  }
+
+  // ---------- Add ----------
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    tasks.push({ id: Date.now() + Math.random().toString(16).slice(2), text: text, done: false });
+    saveTasks();
+    input.value = "";
+    render();
+  });
+
+  function setSummary(text, isError) {
+    summaryEl.textContent = text;
+    summaryEl.classList.toggle("error", !!isError);
+  }
+
+  // ---------- AI summary ----------
+  function todoListAsText() {
+    return tasks.map(function (t) {
+      return (t.done ? "[done] " : "[todo] ") + t.text;
+    }).join("\n");
+  }
+
+  async function summarize() {
+    if (tasks.length === 0) {
+      setSummary("Add some tasks first.", true);
+      return;
+    }
+
+    summarizeBtn.disabled = true;
+    setSummary("Thinking\u2026", false);
+
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: todoListAsText() })
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.summary) {
+        throw new Error(data.error || ("HTTP " + res.status));
+      }
+      setSummary(data.summary, false);
+    } catch (err) {
+      setSummary("Error: " + (err && err.message ? err.message : String(err)), true);
+    } finally {
+      summarizeBtn.disabled = false;
+    }
+  }
+
+  summarizeBtn.addEventListener("click", summarize);
+
+  render();
+})();
+</script>
+</body>
+</html>
